@@ -8,17 +8,17 @@ import { Store } from './store.mjs';
 import { applyStrategy, digest, officialRate } from './metrics.mjs';
 
 const publicDir=fileURLToPath(new URL('./public/',import.meta.url));
-export const BASELINE_PROMPT='Encuentra cinco regalos de Navidad de tiendas reales: uno para un niño, uno para una adolescente, uno para alguien que cocina, uno para alguien que lee y uno para alguien que disfruta actividades al aire libre. Usa firecrawl_search_batch con una lista de cinco consultas, una por regalo: la herramienta lanza las cinco solicitudes en paralelo. Después elige un producto por categoría y consulta sus cinco páginas con firecrawl_scrape_batch, también en paralelo. Si faltan tres productos, busca o verifica esos tres juntos en un lote de tres, no en secuencia. Estas herramientas pueden encontrarse mediante tool_search y llamarse mediante tool_call si están diferidas. Para cada regalo incluye nombre, categoría, tienda, precio y moneda si están publicados, y el enlace directo de producto. Confirma los datos con el contenido de las páginas devuelto por Firecrawl; sustituye cualquier candidato que no sea un producto real o cuya página falle. No inventes productos, precios ni enlaces. Termina cuando tengas exactamente cinco productos distintos verificados, uno por categoría.';
+export const BASELINE_PROMPT='Find five Christmas gifts from real stores: one for a child, a teenager, a cook, a reader, and an outdoor enthusiast. Search all five in one firecrawl_search_batch, then verify product pages in one firecrawl_scrape_batch. Batch unresolved items together. Use tool_search and tool_call if the tools are deferred. Return exactly five distinct products with their names, stores, published prices/currencies and direct links. Never invent products, prices or URLs.';
 
 async function readBody(req,limit=20*1024*1024) {let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>limit)throw Object.assign(new Error('Request too large'),{status:413});chunks.push(chunk);}return Buffer.concat(chunks);}
 function json(res,status,data){res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(JSON.stringify(data));}
 export function validateStrategy(s={mode:'baseline'}) {
-  if(!['baseline','experiment'].includes(s.mode))throw new Error('Modo de estrategia inválido');
+  if(!['baseline','experiment'].includes(s.mode))throw new Error('Invalid strategy mode');
   if(s.mode==='baseline')return {mode:'baseline',version:1};
   const result={mode:'experiment',version:1};
-  if(s.temperature!=null){if(!Number.isFinite(s.temperature)||s.temperature<0||s.temperature>2)throw new Error('Temperatura: 0–2');result.temperature=s.temperature;}
-  if(s.reasoningEffort!=null){if(!['low','medium','high','max'].includes(s.reasoningEffort))throw new Error('Esfuerzo no compatible');result.reasoningEffort=s.reasoningEffort;}
-  if(s.maxCompletionTokens!=null){if(!Number.isInteger(s.maxCompletionTokens)||s.maxCompletionTokens<128||s.maxCompletionTokens>16384)throw new Error('Límite de salida: 128–16384');result.maxCompletionTokens=s.maxCompletionTokens;}
+  if(s.temperature!=null){if(!Number.isFinite(s.temperature)||s.temperature<0||s.temperature>2)throw new Error('Temperature: 0–2');result.temperature=s.temperature;}
+  if(s.reasoningEffort!=null){if(!['low','medium','high','max'].includes(s.reasoningEffort))throw new Error('Unsupported reasoning effort');result.reasoningEffort=s.reasoningEffort;}
+  if(s.maxCompletionTokens!=null){if(!Number.isInteger(s.maxCompletionTokens)||s.maxCompletionTokens<128||s.maxCompletionTokens>16384)throw new Error('Output limit: 128–16384');result.maxCompletionTokens=s.maxCompletionTokens;}
   return result;
 }
 
@@ -29,8 +29,8 @@ export class Lab {
     this.store=new Store(dataDir,[key,process.env.FIRECRAWL_API_KEY]);this.activeRuns=new Map();this.nativeRuns=new Map();this.pending=null;this.child=null;this.closing=false;
     for(const r of this.store.list('run').reverse())if(r.openclawRunId&&!this.nativeRuns.has(r.openclawRunId))this.nativeRuns.set(r.openclawRunId,r.id);
     // A previous process cannot leave a completed-looking run behind.
-    for(const run of this.store.list('run'))if(['queued','running'].includes(run.status))this.store.patch('run',run.id,{status:'interrupted',endedAt:new Date().toISOString(),error:'El proceso anterior terminó antes de cerrar la prueba.'});
-    for(const run of this.store.list('run'))if(run.protocol?.measurement&&!run.captureSchema)this.store.patch('run',run.id,{status:'interrupted',error:'Primera captura de diagnóstico: OpenClaw reutilizó el callId en los reintentos y esta versión guardó solo el último intento. El historial de eventos se conserva. No usar como baseline válida.'});
+    for(const run of this.store.list('run'))if(['queued','running'].includes(run.status))this.store.patch('run',run.id,{status:'interrupted',endedAt:new Date().toISOString(),error:'The previous process ended before closing this run.'});
+    for(const run of this.store.list('run'))if(run.protocol?.measurement&&!run.captureSchema)this.store.patch('run',run.id,{status:'interrupted',error:'Initial diagnostic capture: OpenClaw reused callId across retries and this version retained only the last attempt. Events are preserved. Not a valid baseline.'});
   }
   event(type,event,ctx={}){
     if(this.closing)return;
@@ -44,7 +44,7 @@ export class Lab {
     if(type==='llm_input'){
       const matchesPending=this.pending&&(event.sessionId===this.pending.sessionId||ctx.sessionKey===`agent:main:explicit:${this.pending.sessionId}`);
       runId ||= (matchesPending?this.pending.id:null) || randomUUID();this.activeRuns.set(nativeId,runId);this.nativeRuns.set(nativeId,runId);
-      if(!this.store.get('run',runId))this.store.put('run',{id:runId,label:'Chat manual',strategy:{mode:'baseline',version:1},startedAt:new Date().toISOString(),status:'running',prompt:event.prompt});
+      if(!this.store.get('run',runId))this.store.put('run',{id:runId,label:'Manual chat',strategy:{mode:'baseline',version:1},startedAt:new Date().toISOString(),status:'running',prompt:event.prompt});
       this.store.patch('run',runId,{openclawRunId:nativeId,sessionKey:ctx.sessionKey,sessionId:event.sessionId,provider:event.provider,model:event.model,status:'running',inputSnapshot:event});
     }
     if(type==='model_call_started' || type==='model_call_ended'){
@@ -100,10 +100,10 @@ export class Lab {
   }
   async createRun(input){
     if(this.closing)throw new Error('Service stopping');
-    if(!this.launcher)throw new Error('Configura la ruta del launcher de OpenClaw');
-    if(this.child||this.pending||this.activeRuns.size)throw Object.assign(new Error('Ya hay una prueba activa. Espera a que termine.'),{status:409});
-    const strategy=validateStrategy(input.strategy);const prompt=String(input.prompt||this.defaultPrompt).trim();if(!prompt||prompt.length>30000)throw new Error('Prompt vacío o demasiado largo');
-    const id=randomUUID(),label=String(input.label||'Baseline · cinco regalos').slice(0,120);
+    if(!this.launcher)throw new Error('Configure the OpenClaw launcher path');
+    if(this.child||this.pending||this.activeRuns.size)throw Object.assign(new Error('A run is already active. Wait for it to finish.'),{status:409});
+    const strategy=validateStrategy(input.strategy);const prompt=String(input.prompt||this.defaultPrompt).trim();if(!prompt||prompt.length>30000)throw new Error('Empty or oversized prompt');
+    const id=randomUUID(),label=String(input.label||'Baseline · five gifts').slice(0,120);
     const run={id,label,prompt,strategy,captureSchema:2,runnerManaged:true,status:'queued',startedAt:new Date().toISOString(),sessionId:`santa-lab-${id}`,protocol:{measurement:'official-server-mean-v1',instrumentation:'native provider wrapper; direct Cerebras connection; no headers persisted',correlation:'native OpenClaw requestId/callId plus per-invocation attempt; unattributed calls excluded'},promptHash:digest(prompt)};
     run.protocol.promptPolicy=this.promptPolicy;
     this.store.put('run',run);this.pending=run;
@@ -124,7 +124,7 @@ export class Lab {
       const urls=[...new Set([...text.matchAll(/https?:\/\/[^\s<>"\])}]+/g)].map(m=>m[0].replace(/[.,;]+$/,'')))];
       const summary=this.store.run(id).summary;
       const failure=error||code!==0||!text||summary.measuredCalls===0||result?.meta?.aborted;
-      this.store.patch('run',id,{status:current?.cancelRequested?'interrupted':failure?'failed':'completed',endedAt:new Date().toISOString(),exitCode:code,error:error?.message||current?.error||(failure&&!text?'El agente no produjo una respuesta final válida.':undefined),finalText:text,productLinks:urls,quality:{status:'needs-review',note:'Los enlaces extraídos no prueban por sí solos que sean cinco productos reales; revisa las herramientas y las páginas.'},cliResult:execution,cliStderr:stderr,cliStdout:execution?undefined:stdout});
+      this.store.patch('run',id,{status:current?.cancelRequested?'interrupted':failure?'failed':'completed',endedAt:new Date().toISOString(),exitCode:code,error:error?.message||current?.error||(failure&&!text?'The agent did not produce a valid final response.':undefined),finalText:text,productLinks:urls,quality:{status:'needs-review',note:'Extracted links alone do not prove five real products; inspect tool and page evidence.'},cliResult:execution,cliStderr:stderr,cliStdout:execution?undefined:stdout});
       this.pending=null;this.child=null;await unlink(promptFile).catch(()=>{});
     };
     child.once('error',error=>void settle(null,error));child.once('close',code=>void settle(code));
@@ -132,12 +132,12 @@ export class Lab {
   }
   async cancelRun(id){
     const run=this.store.get('run',id);
-    if(!run||this.pending?.id!==id)throw new Error('Esta prueba no está activa');
-    if(!run.openclawRunId||!run.sessionKey)throw new Error('El agente todavía se está preparando. Intenta de nuevo en unos segundos.');
+    if(!run||this.pending?.id!==id)throw new Error('This run is not active');
+    if(!run.openclawRunId||!run.sessionKey)throw new Error('The agent is still starting. Try again in a few seconds.');
     const child=spawn(this.launcher,['gateway','call','chat.abort','--params',JSON.stringify({sessionKey:run.sessionKey,runId:run.openclawRunId})],{stdio:['ignore','ignore','pipe'],env:process.env});
     const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});
-    if(code!==0)throw new Error('OpenClaw no pudo detener la prueba');
-    this.store.patch('run',id,{cancelRequested:true,status:'interrupted',endedAt:new Date().toISOString(),error:'Prueba detenida; se conservan todos los intentos.'});
+    if(code!==0)throw new Error('OpenClaw could not stop the run');
+    this.store.patch('run',id,{cancelRequested:true,status:'interrupted',endedAt:new Date().toISOString(),error:'Run stopped; all attempts are preserved.'});
     return {ok:true};
   }
   async handle(req,res){
@@ -163,5 +163,5 @@ export class Lab {
     }catch(error){if(!res.headersSent)json(res,error.status||400,{error:error.message});else res.destroy();}
   }
   async start(){await mkdir(this.dataDir,{recursive:true,mode:0o700});this.server=http.createServer((req,res)=>void this.handle(req,res));await new Promise((resolve,reject)=>{this.server.once('error',reject);this.server.listen(this.port,'127.0.0.1',resolve);});this.logger.info(`Santa Lab: http://127.0.0.1:${this.port}`);}
-  async stop(){this.closing=true;if(this.pending)this.store.patch('run',this.pending.id,{status:'interrupted',endedAt:new Date().toISOString(),error:'El servicio se detuvo durante la ejecución.'});if(this.child){try{process.kill(-this.child.pid,'SIGTERM');}catch{}}if(this.server){this.server.closeIdleConnections();await new Promise(resolve=>this.server.close(resolve));}this.store.close();}
+  async stop(){this.closing=true;if(this.pending)this.store.patch('run',this.pending.id,{status:'interrupted',endedAt:new Date().toISOString(),error:'The service stopped during the run.'});if(this.child){try{process.kill(-this.child.pid,'SIGTERM');}catch{}}if(this.server){this.server.closeIdleConnections();await new Promise(resolve=>this.server.close(resolve));}this.store.close();}
 }

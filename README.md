@@ -117,6 +117,22 @@ Pass `--prompt-file FILE` for another user request; `--reload` reloads Santa Lab
 
 ## TPS and timing
 
+### Optional lean shopping mode
+
+For a dedicated shopping profile, reload the updated plugin manifest before enabling new settings, then run:
+
+```sh
+node .local/openclaw-launcher.mjs plugins reload santa-lab
+node scripts/configure-shopping.mjs /absolute/path/.openclaw-santa lean
+node .local/openclaw-launcher.mjs plugins reload santa-lab
+```
+
+This replaces the general system context with a compact shopping policy and allows only the two batch tools. Tool Search and Code Mode are disabled in that isolated profile so both schemas are directly callable. Model, credentials, reasoning effort and output-token limits stay unchanged. Use `standard` instead of `lean` to restore the saved tool presentation and the previous system policy, then reload.
+
+The lean selector adds purchase intent when a query lacks it, requests five live candidates, and ranks matching direct product pages ahead of categories/reviews. If all search hits are non-product pages, it can reuse explicit retail product links already present in their live descriptions. Those links retain source provenance and still require a fresh page fetch and price verification. No stores, product IDs or prices are preset. Price excerpts are scoped to the product section to exclude recommendation prices. Raw responses remain available locally.
+
+## Timing interpretation
+
 The official patch supplies server generation metrics:
 
 ```text

@@ -9,6 +9,7 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
+      "leanShopping": { "type": "boolean", "default": false, "description": "Dedicated shopping system prompt, two allowed tools and compact source evidence. Disable tools.toolSearch and tools.codeMode in the isolated shopping profile to expose schemas directly." },
       "shoppingMode": { "type": "boolean", "default": false, "description": "Inject versioned shopping and price-validation rules into system context. Requires hooks.allowPromptInjection=true." },
       "port": { "type": "integer", "minimum": 1024, "maximum": 65535, "default": 18891 },
       "dataDir": { "type": "string" },
