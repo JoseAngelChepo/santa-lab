@@ -1,0 +1,7 @@
+Encuentra estos cinco productos en tiendas reales: Apple AirPods 4 estándar sin ANC; Nintendo Switch 2 consola estándar; Amazon Kindle Paperwhite 16 GB; LEGO Botanicals Ramo de rosas 10328; Hydro Flask Wide Mouth 32 oz.
+
+Busca los cinco nombres con un único firecrawl_search_batch de cinco consultas en paralelo. Elige una página directa de producto por deseo y consulta esas cinco páginas con un único firecrawl_scrape_batch en paralelo. Usa tool_search y tool_call si estas herramientas están diferidas.
+
+Criterio suficiente: la página consultada corresponde al producto y modelo pedidos y tiene un enlace de tienda real. Acepta la primera página que cumpla eso. No compares vendedores, no compruebes stock, no busques el menor precio, no investigues descuentos ni resuelvas contradicciones de disponibilidad. Si aparece un precio claramente asociado al producto, cópialo con su moneda; si no aparece o es ambiguo, escribe "no visible" y continúa. La falta de precio o stock nunca justifica otra búsqueda ni otra consulta. No repitas una página por ser un extracto.
+
+Solo busca un reemplazo si la página falla, no es una página de producto o corresponde a otro modelo. Agrupa los pendientes en un único lote, conservando los productos resueltos. No inventes productos, precios ni enlaces. En cuanto tengas los cinco enlaces y modelos respaldados por las páginas, termina con una tabla de cinco filas: producto, tienda, precio si es visible y enlace. Sin introducción, notas, alternativas ni explicación del proceso.

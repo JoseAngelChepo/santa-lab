@@ -1,0 +1,14 @@
+{
+  "name": "santa-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.22.1 <25 || >=26.12.1" },
+  "scripts": { "test": "node --test test/*.test.mjs" },
+  "peerDependencies": { "openclaw": "2026.10.9" },
+  "openclaw": {
+    "extensions": ["./index.mjs"],
+    "compat": { "pluginApi": ">=2026.10.9" },
+    "build": { "openclawVersion": "2026.10.9" }
+  }
+}

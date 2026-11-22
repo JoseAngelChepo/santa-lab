@@ -1,0 +1,18 @@
+{
+  "id": "santa-lab",
+  "name": "Santa Lab",
+  "description": "Local per-call experiments, transparent Cerebras telemetry and versioned strategies.",
+  "categories": ["developer-tools"],
+  "activation": { "onStartup": true },
+  "contracts": { "tools": ["firecrawl_search_batch", "firecrawl_scrape_batch"] },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "shoppingMode": { "type": "boolean", "default": false, "description": "Inject versioned shopping and price-validation rules into system context. Requires hooks.allowPromptInjection=true." },
+      "port": { "type": "integer", "minimum": 1024, "maximum": 65535, "default": 18891 },
+      "dataDir": { "type": "string" },
+      "launcher": { "type": "string" }
+    }
+  }
+}

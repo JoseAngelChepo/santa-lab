@@ -1,0 +1,40 @@
+import { readFile,writeFile,copyFile,mkdir,chmod } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { digest } from '../metrics.mjs';
+
+const root=fileURLToPath(new URL('../',import.meta.url));
+const source=path.resolve(process.argv[2]||path.join(root,'../openclaw-santa'));
+const state=path.resolve(process.argv[3]||path.join(os.homedir(),'.openclaw-santa'));
+const sourceBase='8b18b5578f66eab1501cba4cef2310d88bfb9a41';
+execFileSync('git',['merge-base','--is-ancestor',sourceBase,'HEAD'],{cwd:source});
+const providerIndex=path.join(source,'extensions/cerebras/index.ts');
+let index=await readFile(providerIndex,'utf8');
+if(!index.includes('defineSingleProviderPluginEntry')||!index.includes('provider: {'))throw new Error('Unexpected Cerebras plugin. Refusing to patch.');
+if(!index.includes('import { wrapCerebrasTracking }'))index=index.replace('const PROVIDER_ID =', 'import { wrapCerebrasTracking } from "./tracking.js";\n\nconst PROVIDER_ID =');
+if(!index.includes('wrapStreamFn: wrapCerebrasTracking'))index=index.replace('  provider: {','  provider: {\n    wrapStreamFn: wrapCerebrasTracking,');
+await copyFile(path.join(root,'instrumentation/tracking.ts'),path.join(source,'extensions/cerebras/tracking.ts'));
+await writeFile(providerIndex,index);
+const configPath=path.join(state,'openclaw.json'),config=JSON.parse(await readFile(configPath,'utf8'));
+await copyFile(configPath,path.join(state,`openclaw.before-lab-${Date.now()}.json`));
+const cerebras=config.models?.providers?.cerebras;
+if(!cerebras)throw new Error('Configure the Cerebras provider and authorized key in the isolated profile first.');
+cerebras.models??=[];
+for(const [id,name,efforts] of [['qwen-3.8-27b','Qwen 3.8 27B (provisional)',['none','low','medium','high']],['moonshotai-kimi-k3.1-pro-trial','Kimi K3.1 Pro (Cerebras)',['low','high','max']]]){
+  if(!cerebras.models.some(model=>model.id===id))cerebras.models.push({id,name,reasoning:true,input:['text'],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},compat:{supportsTools:true,supportsStrictMode:false,supportsReasoningEffort:true,supportedReasoningEfforts:efforts}});
+}
+config.agents??={};config.agents.defaults??={};config.agents.defaults.thinkingDefault??='low';
+await mkdir(path.join(root,'.local'),{recursive:true});
+const launcher=path.join(root,'.local/openclaw-launcher.mjs');
+await writeFile(launcher,`#!${process.execPath}\nimport {spawnSync} from 'node:child_process';\nconst result=spawnSync(process.env.SANTA_LAB_PNPM||'pnpm',['openclaw',...(process.argv.length>2?process.argv.slice(2):['gateway','run'])],{cwd:${JSON.stringify(source)},env:{...process.env,PATH:${JSON.stringify(path.dirname(process.execPath))}+(process.platform==='win32'?';':':')+process.env.PATH,OPENCLAW_STATE_DIR:${JSON.stringify(state)},OPENCLAW_CONFIG_PATH:${JSON.stringify(configPath)}},stdio:'inherit'});\nif(result.error)console.error(result.error.message);\nprocess.exit(result.status??1);\n`,{mode:0o700});
+await chmod(launcher,0o700);
+config.plugins??={};config.plugins.allow=[...new Set([...(config.plugins.allow||[]),'santa-lab'])];
+config.plugins.load??={};config.plugins.load.paths=[...new Set([...(config.plugins.load.paths||[]),root.replace(/\/$/,'')])];
+config.plugins.entries??={};config.plugins.entries['santa-lab']={enabled:true,hooks:{allowConversationAccess:true,allowPromptInjection:true},config:{port:18891,dataDir:path.join(state,'santa-lab'),launcher,shoppingMode:true}};
+await writeFile(configPath,JSON.stringify(config,null,2)+'\n',{mode:0o600});
+await mkdir(path.join(root,'.local'),{recursive:true});
+await writeFile(path.join(root,'.local/provenance.json'),JSON.stringify({sourceBase,officialPatchedHead:execFileSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'}).trim(),providerWrapperSha256:digest(await readFile(path.join(root,'instrumentation/tracking.ts'),'utf8')),providerIndexSha256:digest(index),installedAt:new Date().toISOString()},null,2));
+console.log('Santa Lab installed. Endpoint remains:',config.models?.providers?.cerebras?.baseUrl);
+console.log('Build the source plugin and restart/reload the Santa Gateway. UI: http://127.0.0.1:18891');
